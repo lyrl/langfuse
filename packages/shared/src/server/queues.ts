@@ -1,6 +1,7 @@
-import { z } from "zod/v4";
+import { z } from "zod";
 import { eventTypes } from "./ingestion/types";
 import {
+  ActionId,
   BatchActionQuerySchema,
   BatchActionType,
 } from "../features/batchAction/types";
@@ -36,8 +37,13 @@ export const OtelIngestionEvent = z.object({
     scope: z.object({
       projectId: z.string(),
       accessLevel: z.literal("project"),
+      orgId: z.string().optional(),
     }),
   }),
+  propagatedHeaders: z.record(z.string(), z.string()).optional(),
+  sdkName: z.string().optional(),
+  sdkVersion: z.string().optional(),
+  ingestionVersion: z.string().optional(),
 });
 
 export const BatchExportJobSchema = z.object({
@@ -184,6 +190,14 @@ export const BatchActionProcessingEventSchema = z.discriminatedUnion(
       config: ObservationAddToDatasetConfigSchema,
       type: z.enum(BatchActionType),
     }),
+    z.object({
+      actionId: z.literal(ActionId.ObservationBatchEvaluation),
+      projectId: z.string(),
+      query: BatchActionQuerySchema,
+      cutoffCreatedAt: z.date(),
+      batchActionId: z.string(),
+      evaluatorIds: z.array(z.string()),
+    }),
   ],
 );
 
@@ -220,6 +234,13 @@ export const WebhookOutboundEnvelopeSchema = z.object({
   prompt: PromptDomainSchema,
   action: EventActionSchema,
   type: z.literal("prompt-version"),
+  user: z
+    .object({
+      id: z.string(),
+      name: z.string().nullable(),
+      email: z.string().nullable(),
+    })
+    .optional(),
 });
 
 export const WebhookInputSchema = z.object({
@@ -237,6 +258,13 @@ export const EntityChangeEventSchema = z.discriminatedUnion("entityType", [
     promptId: z.string(),
     action: EventActionSchema,
     prompt: PromptDomainSchema,
+    user: z
+      .object({
+        id: z.string(),
+        name: z.string().nullable(),
+        email: z.string().nullable(),
+      })
+      .optional(),
   }),
   // Add other entity types here in the future
 ]);
@@ -296,6 +324,7 @@ export enum QueueName {
   TraceDelete = "trace-delete",
   ProjectDelete = "project-delete",
   EvaluationExecution = "evaluation-execution-queue", // Worker executes Evals
+  EvaluationExecutionSecondaryQueue = "secondary-evaluation-execution-queue", // Separates high-throughput eval projects from other projects.
   LLMAsJudgeExecution = "llm-as-a-judge-execution-queue", // Observation-based eval execution
   DatasetRunItemUpsert = "dataset-run-item-upsert-queue",
   BatchExport = "batch-export-queue",
@@ -402,6 +431,13 @@ export type TQueueJobTypes = {
     retryBaggage?: RetryBaggage;
   };
   [QueueName.EvaluationExecution]: {
+    timestamp: Date;
+    id: string;
+    payload: EvalExecutionEventType;
+    name: QueueJobs.EvaluationExecution;
+    retryBaggage?: RetryBaggage;
+  };
+  [QueueName.EvaluationExecutionSecondaryQueue]: {
     timestamp: Date;
     id: string;
     payload: EvalExecutionEventType;

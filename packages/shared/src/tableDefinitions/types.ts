@@ -7,6 +7,7 @@ export type UiColumnMapping = Readonly<{
   clickhouseSelect: string;
   clickhouseTypeOverwrite?: string;
   queryPrefix?: string;
+  emptyEqualsNull?: boolean;
 }>;
 
 export type SingleValueOption = {
@@ -26,9 +27,13 @@ export type ColumnDefinition =
   | {
       name: string;
       id: string;
-      type: "number" | "string" | "datetime" | "boolean";
+      type: "number" | "string" | "datetime" | "boolean" | "null";
       internal: string;
       nullable?: boolean;
+      /** Step for number inputs (e.g. 1 for integers). Defaults to 0.01 in UI. */
+      step?: number;
+      /** Minimum value for number inputs. */
+      min?: number;
     }
   | {
       name: string;

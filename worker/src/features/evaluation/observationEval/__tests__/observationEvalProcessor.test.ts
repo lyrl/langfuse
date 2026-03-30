@@ -14,17 +14,22 @@ import {
 import { UnrecoverableError } from "../../../../errors/UnrecoverableError";
 
 // Mock prisma
-vi.mock("@langfuse/shared/src/db", () => ({
-  prisma: {
-    jobExecution: {
-      findFirst: vi.fn(),
-      update: vi.fn(),
+vi.mock("@langfuse/shared/src/db", async () => {
+  const actual = await vi.importActual("@langfuse/shared/src/db");
+
+  return {
+    ...actual,
+    prisma: {
+      jobExecution: {
+        findFirst: vi.fn(),
+        update: vi.fn(),
+      },
+      jobConfiguration: {
+        findFirst: vi.fn(),
+      },
     },
-    jobConfiguration: {
-      findFirst: vi.fn(),
-    },
-  },
-}));
+  };
+});
 
 // Mock executeLLMAsJudgeEvaluation
 vi.mock("../../evalService", () => ({
@@ -128,6 +133,40 @@ describe("processObservationEval", () => {
         processObservationEval({ event: baseEvent, deps }),
       ).rejects.toThrow(UnrecoverableError);
     });
+
+    it("should cancel the job when the evaluator is blocked", async () => {
+      const job = createMockJobExecution({
+        id: jobExecutionId,
+        projectId,
+        status: JobExecutionStatus.PENDING,
+        jobConfigurationId: "config-123",
+      });
+      const config = createMockJobConfiguration({
+        id: "config-123",
+        projectId,
+        blockedAt: new Date(),
+      });
+
+      (prisma.jobExecution.findFirst as Mock).mockResolvedValue(job);
+      (prisma.jobConfiguration.findFirst as Mock).mockResolvedValue(config);
+
+      const deps = createMockProcessorDeps();
+
+      await processObservationEval({ event: baseEvent, deps });
+
+      expect(prisma.jobExecution.update).toHaveBeenCalledWith({
+        where: {
+          id: job.id,
+          projectId,
+        },
+        data: {
+          status: JobExecutionStatus.CANCELLED,
+          endTime: expect.any(Date),
+        },
+      });
+      expect(deps.downloadObservationFromS3).not.toHaveBeenCalled();
+      expect(executeLLMAsJudgeEvaluation).not.toHaveBeenCalled();
+    });
   });
 
   describe("S3 download", () => {
@@ -148,7 +187,7 @@ describe("processObservationEval", () => {
 
       const deps: ObservationEvalProcessorDeps = {
         downloadObservationFromS3: vi
-          .fn()
+          .fn<ObservationEvalProcessorDeps["downloadObservationFromS3"]>()
           .mockRejectedValue(new Error("S3 connection failed")),
       };
 
@@ -175,7 +214,7 @@ describe("processObservationEval", () => {
 
       const deps: ObservationEvalProcessorDeps = {
         downloadObservationFromS3: vi
-          .fn()
+          .fn<ObservationEvalProcessorDeps["downloadObservationFromS3"]>()
           .mockResolvedValue("not valid json {"),
       };
 
@@ -204,7 +243,7 @@ describe("processObservationEval", () => {
       const invalidObservation = { id: "obs-123", someField: "value" };
       const deps: ObservationEvalProcessorDeps = {
         downloadObservationFromS3: vi
-          .fn()
+          .fn<ObservationEvalProcessorDeps["downloadObservationFromS3"]>()
           .mockResolvedValue(JSON.stringify(invalidObservation)),
       };
 
@@ -240,9 +279,9 @@ describe("processObservationEval", () => {
         evalTemplate: template,
       });
       const observation = createTestObservation({
-        id: "obs-xyz",
-        projectId,
-        traceId: "trace-abc",
+        span_id: "obs-xyz",
+        project_id: projectId,
+        trace_id: "trace-abc",
         environment: "production",
         output: '{"response": "test output"}',
       });
@@ -289,7 +328,7 @@ describe("processObservationEval", () => {
         variableMapping: [],
       });
       const observation = createTestObservation({
-        projectId,
+        project_id: projectId,
         environment: undefined as unknown as string,
       });
 
@@ -324,17 +363,12 @@ describe("processObservationEval", () => {
         variableMapping: [
           { templateVariable: "input", selectedColumnId: "input" },
           { templateVariable: "output", selectedColumnId: "output" },
-          {
-            templateVariable: "model",
-            selectedColumnId: "provided_model_name",
-          },
         ],
       });
       const observation = createTestObservation({
         project_id: projectId,
         input: '{"prompt": "Hello"}',
         output: '{"response": "World"}',
-        provided_model_name: "gpt-4",
       });
 
       (prisma.jobExecution.findFirst as Mock).mockResolvedValue(job);
@@ -359,7 +393,6 @@ describe("processObservationEval", () => {
               var: "output",
               value: '{"response": "World"}',
             }),
-            expect.objectContaining({ var: "model", value: "gpt-4" }),
           ]),
         }),
       );

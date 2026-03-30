@@ -12,6 +12,7 @@ import Link from "next/link";
 import { type ReactNode } from "react";
 import { cn } from "@/src/utils/tailwind";
 import { type RouteGroup } from "@/src/components/layouts/routes";
+import { useExperimentAccess } from "@/src/features/experiments/hooks/useExperimentAccess";
 
 export type NavMainItem = {
   title: string;
@@ -38,7 +39,7 @@ function NavItemContent({ item }: { item: NavMainItem }) {
         (typeof item.label === "string" ? (
           <span
             className={cn(
-              "-my-0.5 self-center whitespace-nowrap break-keep rounded-sm border px-1 py-0.5 text-xs leading-none",
+              "-my-0.5 self-center rounded-sm border px-1 py-0.5 text-xs leading-none break-keep whitespace-nowrap",
             )}
           >
             {item.label}
@@ -59,6 +60,16 @@ export function NavMain({
     ungrouped: NavMainItem[];
   };
 }) {
+  const { isExperimentsBetaEnabled, setExperimentsBetaEnabled } =
+    useExperimentAccess();
+
+  const handleNavClick = (item: NavMainItem) => {
+    if (item.title !== "Experiments") return;
+    if (isExperimentsBetaEnabled) return;
+
+    setExperimentsBetaEnabled(true);
+  };
+
   return (
     <>
       <SidebarGroup>
@@ -75,6 +86,7 @@ export function NavMain({
                     <Link
                       href={item.url}
                       target={item.newTab ? "_blank" : undefined}
+                      onClick={() => handleNavClick(item)}
                     >
                       <NavItemContent item={item} />
                     </Link>
@@ -102,6 +114,7 @@ export function NavMain({
                         <Link
                           href={item.url}
                           target={item.newTab ? "_blank" : undefined}
+                          onClick={() => handleNavClick(item)}
                         >
                           <NavItemContent item={item} />
                         </Link>

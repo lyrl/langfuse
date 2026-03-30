@@ -14,6 +14,7 @@ import {
   type TraceDomain,
   type ScoreDomain,
   AnnotationQueueObjectType,
+  LangfuseInternalTraceEnvironment,
 } from "@langfuse/shared";
 import { type SelectionData } from "@/src/features/comments/contexts/InlineCommentSelectionContext";
 import { type WithStringifiedMetadata } from "@/src/utils/clientSideDomainTypes";
@@ -31,6 +32,7 @@ import {
   EnvironmentBadge,
   ReleaseBadge,
   VersionBadge,
+  TargetTraceBadge,
 } from "./TraceMetadataBadges";
 import { LatencyBadge } from "../ObservationDetailView/ObservationMetadataBadgesSimple";
 import {
@@ -38,6 +40,7 @@ import {
   UsageBadge,
 } from "../ObservationDetailView/ObservationMetadataBadgesTooltip";
 import { aggregateTraceMetrics } from "@/src/components/trace2/lib/trace-aggregation";
+import { resolveEvalExecutionMetadata } from "@/src/components/trace2/lib/resolve-metadata";
 
 export interface TraceDetailViewHeaderProps {
   trace: Omit<WithStringifiedMetadata<TraceDomain>, "input" | "output"> & {
@@ -46,6 +49,7 @@ export interface TraceDetailViewHeaderProps {
     output: string | null;
   };
   observations: ObservationReturnTypeWithMetadata[];
+  parsedMetadata: unknown;
   projectId: string;
   traceScores: WithStringifiedMetadata<ScoreDomain>[];
   commentCount: number | undefined;
@@ -59,6 +63,7 @@ export interface TraceDetailViewHeaderProps {
 export const TraceDetailViewHeader = memo(function TraceDetailViewHeader({
   trace,
   observations,
+  parsedMetadata,
   projectId,
   traceScores,
   commentCount,
@@ -72,15 +77,20 @@ export const TraceDetailViewHeader = memo(function TraceDetailViewHeader({
     [observations],
   );
 
+  const targetTraceId =
+    trace.environment === LangfuseInternalTraceEnvironment.LLMJudge
+      ? resolveEvalExecutionMetadata(parsedMetadata)
+      : null;
+
   return (
-    <div className="flex-shrink-0 space-y-2 border-b p-2 @container">
+    <div className="@container shrink-0 space-y-2 border-b p-2">
       {/* Title row with actions */}
-      <div className="grid w-full grid-cols-1 items-start gap-2 @2xl:grid-cols-[auto,auto] @2xl:justify-between">
+      <div className="grid w-full grid-cols-1 items-start gap-2 @2xl:grid-cols-[auto_auto] @2xl:justify-between">
         <div className="flex w-full flex-row items-start gap-1">
           <div className="mt-1.5">
             <ItemBadge type="TRACE" isSmall />
           </div>
-          <span className="mb-0 ml-1 line-clamp-2 min-w-0 break-all font-medium md:break-normal md:break-words">
+          <span className="mb-0 ml-1 line-clamp-2 min-w-0 font-medium break-all md:break-normal md:wrap-break-word">
             {trace.name || trace.id}
           </span>
           <CopyIdsPopover idItems={[{ id: trace.id, name: "Trace ID" }]} />
@@ -148,6 +158,10 @@ export const TraceDetailViewHeader = memo(function TraceDetailViewHeader({
           <LatencyBadge latencySeconds={trace.latency ?? null} />
           <SessionBadge sessionId={trace.sessionId} projectId={projectId} />
           <UserIdBadge userId={trace.userId} projectId={projectId} />
+          <TargetTraceBadge
+            targetTraceId={targetTraceId}
+            projectId={projectId}
+          />
           <EnvironmentBadge environment={trace.environment} />
           <ReleaseBadge release={trace.release} />
           <VersionBadge version={trace.version} />

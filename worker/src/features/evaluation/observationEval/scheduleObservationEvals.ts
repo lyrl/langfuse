@@ -9,6 +9,8 @@ import {
   EvalTargetObject,
   JobExecutionStatus,
   type FilterState,
+  isJobConfigExecutable,
+  mapEventEvalFilterColumnIdToField,
 } from "@langfuse/shared";
 import { createW3CTraceId } from "../../utils";
 
@@ -41,9 +43,17 @@ export async function scheduleObservationEvals(
     return;
   }
 
-  // Filter configs that match this observation (filter + sampling)
-  // This is done before S3 upload to avoid unnecessary uploads
+  // Filter configs that match this observation (filter + sampling).
+  // This is done before S3 upload to avoid unnecessary uploads.
   const matchingConfigs = configs.filter((config) => {
+    if (!isJobConfigExecutable(config)) {
+      logger.debug("Skipping non-executable observation eval config", {
+        configId: config.id,
+      });
+
+      return false;
+    }
+
     // Check filter
     const isTargeted = evaluateFilter(observation, config);
     if (!isTargeted) {
@@ -163,13 +173,17 @@ function evaluateFilter(
     !Array.isArray(filterConditions) ||
     filterConditions.length === 0;
 
+  // Map filter column IDs to observation field values for in-memory filtering
+  const fieldMapper = (obs: ObservationForEval, column: string) =>
+    mapEventEvalFilterColumnIdToField(obs, column);
+
   // Use InMemoryFilterService to evaluate filter if there are conditions
   const isFilterMatch = isEmptyFilter
     ? true
     : InMemoryFilterService.evaluateFilter(
         observation,
         filterConditions,
-        (obs, columnId) => obs[columnId as keyof ObservationForEval],
+        fieldMapper,
       );
 
   // For experiment configs, must also match experiment root span

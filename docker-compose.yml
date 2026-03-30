@@ -6,6 +6,7 @@
 services:
   langfuse-worker:
     image: docker.io/langfuse/langfuse-worker:3
+    pull_policy: always
     restart: always
     depends_on: &langfuse-depends-on
       postgres:
@@ -68,6 +69,7 @@ services:
 
   langfuse-web:
     image: docker.io/langfuse/langfuse:3
+    pull_policy: always
     restart: always
     depends_on: *langfuse-depends-on
     ports:
